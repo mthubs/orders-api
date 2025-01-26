@@ -1,0 +1,79 @@
+version: '3'
+services:
+
+  #PHP Service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app
+    restart: unless-stopped
+    tty: true
+    environment:
+      SERVICE_NAME: app
+      SERVICE_TAGS: dev
+      DB_CONNECTION: mysql
+      DB_HOST: app_db
+      DB_PORT: 3304
+      DB_DATABASE: app
+      DB_USERNAME: app_user
+      DB_PASSWORD: app_db_pass
+    working_dir: /var/www
+    volumes:
+      - ./app:/var/www
+      - ./php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    depends_on:
+      - app_db
+    networks:
+      - app_network
+
+  #Nginx Service
+  app_webserver:
+    image: nginx:alpine
+    container_name: app_webserver
+    restart: unless-stopped
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+    tty: true
+    ports:
+      - "80:80"
+    volumes:
+      - ./app:/var/www
+      - ./nginx/conf.d/:/etc/nginx/conf.d/
+    networks:
+      - app_network
+
+  #MySQL Service
+  app_db:
+    platform: linux/x86_64
+    image: mysql:8.0-bookworm
+    container_name: app_db
+    restart: unless-stopped
+    tty: true
+    ports:
+      - "3304:3304"
+    environment:
+      MYSQL_DATABASE: app
+      MYSQL_ROOT_PASSWORD: app_pass
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: app_db_pass
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+      MYSQL_TCP_PORT: 3304
+    volumes:
+      - ./dbdata:/var/lib/mysql
+      - ./mysql/my.cnf:/etc/mysql/my.cnf
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "app_user", "-papp_db_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+#Docker Networks
+networks:
+  app_network:
+    driver: bridge
+volumes:
+  dbdata:
+    driver: local
